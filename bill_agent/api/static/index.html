@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>航运智能账单助手</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">⚓</div>
+      <div>
+        <h1>航运智能账单助手</h1>
+        <p class="subtitle">多格式单据 → 标准账单 JSON · CREATE / UPDATE / NO_CHANGE / PENDING_REVIEW</p>
+      </div>
+    </div>
+    <div class="health" id="health" title="OCR 通道是否可用（仅影响扫描件/图片）">
+      <span class="dot" id="health-dot"></span>
+      <span id="health-text">检测中…</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="panel controls" aria-labelledby="controls-title">
+      <h2 id="controls-title">上传与设置</h2>
+
+      <label class="dropzone" id="dropzone" for="file-input">
+        <span class="dropzone-icon" aria-hidden="true">&#43;</span>
+        <span class="dropzone-title">拖拽单据到这里，或点击选择</span>
+        <span class="hint">EML · PDF · JPG · PNG · TIFF · XLS · XLSX · DOC · DOCX<br>单个文件 ≤ 50MB，可多选</span>
+        <input id="file-input" type="file" multiple hidden
+               accept=".eml,.pdf,.jpg,.jpeg,.png,.tif,.tiff,.xls,.xlsx,.doc,.docx">
+      </label>
+      <ul class="file-list" id="file-list" aria-live="polite"></ul>
+
+      <div class="field">
+        <label for="entity">记账主体 <span class="muted">（用于 AR/AP 判定，可留空）</span></label>
+        <input id="entity" type="text" placeholder="例如：上海某某物流有限公司" autocomplete="off">
+      </div>
+
+      <div class="field">
+        <label for="bills-button">已有账单 JSON <span class="muted">（可选，用于 UPDATE / NO_CHANGE 比对）</span></label>
+        <div class="file-pick">
+          <button type="button" class="ghost" id="bills-button">选择 JSON 文件</button>
+          <span id="bills-name" class="muted">未选择</span>
+          <button type="button" class="link" id="bills-clear" hidden>清除</button>
+          <input id="bills-input" type="file" accept=".json,application/json" hidden>
+        </div>
+      </div>
+
+      <button type="button" class="primary block" id="submit" disabled>开始处理</button>
+      <p class="error" id="form-error" role="alert" hidden></p>
+    </section>
+
+    <section class="panel results" aria-labelledby="results-title">
+      <div class="results-head">
+        <h2 id="results-title">处理结果</h2>
+        <div class="statusbar" id="statusbar" hidden>
+          <span class="spinner" id="spinner" hidden></span>
+          <span id="status-text">排队中</span>
+          <span class="elapsed" id="status-elapsed"></span>
+        </div>
+      </div>
+
+      <div class="empty" id="empty">
+        <p class="empty-title">还没有结果</p>
+        <p class="muted">上传单据后点击「开始处理」，识别与匹配结果会显示在这里，并可下载题目要求的 JSON。</p>
+      </div>
+
+      <div class="error-box" id="error-box" role="alert" hidden></div>
+
+      <div id="result-area" hidden>
+        <div class="summary" id="summary"></div>
+        <div class="actions">
+          <button type="button" class="primary" id="download">下载 JSON</button>
+          <button type="button" class="ghost" id="show-raw">原始 JSON</button>
+        </div>
+        <div class="table-wrap">
+          <table class="records" id="records"></table>
+        </div>
+        <pre class="raw" id="raw" hidden></pre>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

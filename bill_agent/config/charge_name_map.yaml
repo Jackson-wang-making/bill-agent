@@ -1,0 +1,14 @@
+# 费用名标准化映射：原始写法 -> 标准名称（可维护字典）
+mappings:
+  - standard: Handling Charge
+    aliases: [Handling Fee, H/D Fee, H/D, Handling]
+  - standard: Documentation Fee
+    aliases: [Doc Fee, Documentation Fee, DOC]
+  - standard: Terminal Handling Charge
+    aliases: [THC, Terminal Handling Charge]
+  - standard: Trucking Charge
+    aliases: [Trucking Fee, Trucking]
+  - standard: Customs Clearance Fee
+    aliases: [Customs Fee, Customs Clearance, Customs Clearance Fee]
+  - standard: Storage Charge
+    aliases: [Storage Fee, Storage]

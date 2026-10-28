@@ -1,0 +1,18 @@
+[
+  {
+    "reference_no": "DN-2026-001",
+    "bl_no": "BL-8842",
+    "booking_no": "BK-1188",
+    "container_no": "MSKU-1234567",
+    "issuer": "Shanghai Ocean Freight Forwarding Co., Ltd.",
+    "recipient": "ABC Trading Co., Ltd.",
+    "document_date": "2026-10-20",
+    "charge_item": "Handling Charge",
+    "original_charge_item": "Handling Fee",
+    "amount": 120.0,
+    "currency": "USD",
+    "payment_term": "PP",
+    "quantity": 1.0,
+    "unit_price": 120.0
+  }
+]

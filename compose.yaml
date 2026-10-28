@@ -1,0 +1,22 @@
+# 本地 MinIO —— 为 OCR 的 stage_node 提供「本地文件 → 网关可下载 URL」的对象存储。
+# 使用本机已有的 cgr.dev/chainguard/minio 镜像（无需拉取）。
+# 仅用于本地开发/联调；生产请指向真实对象存储（S3/OSS/MinIO），并改掉默认口令。
+services:
+  minio:
+    image: cgr.dev/chainguard/minio:latest
+    container_name: bill-agent-minio
+    command: server /data --address ":9000" --console-address ":9001"
+    user: "0:0"                # 本地开发：避免命名卷的 uid 权限问题
+    ports:
+      - "9000:9000"            # S3 API
+      - "9001:9001"            # Web console
+    environment:
+      # 凭据来自 .env（不入库）；未配置时才退回本地默认值
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+    volumes:
+      - minio_data:/data
+    restart: unless-stopped
+
+volumes:
+  minio_data:

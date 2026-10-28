@@ -1,0 +1,54 @@
+{
+  "data": {
+    "createDate": "2026-10-27 20:11:34",
+    "fileName": "",
+    "list": [
+      {
+        "customsClearance": "",
+        "customsReleaseStatus": "",
+        "fileType": "PAI-COLOADER-NOTICE",
+        "firmsCode": "",
+        "cyFirmsCode": "",
+        "inlandArrivalDate": "",
+        "invoiceNumber": "",
+        "loadedOnRailDate": "",
+        "mblNumber": "",
+        "itNumber": "",
+        "itDate": "",
+        "itLocation": "",
+        "pickupLocation": "",
+        "remark": "",
+        "revisedEtaOfDestination": "",
+        "shipper": "",
+        "consignee": "",
+        "usCustomsStatus": "",
+        "ctrList": [],
+        "chargeList": [],
+        "hold": {
+          "holdType": "",
+          "holdDate": "",
+          "holdDesc": ""
+        },
+        "other": [],
+        "suspicious": "N",
+        "isDetention": "N",
+        "isDemurrage": "N",
+        "page_index": [
+          0,
+          1
+        ]
+      }
+    ],
+    "orderType": "None",
+    "pages_split": [
+      [
+        0,
+        1
+      ]
+    ]
+  },
+  "success": true,
+  "message": "文档处理成功",
+  "error_code": null,
+  "task_id": null
+}

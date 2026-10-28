@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual env
+.venv/
+venv/
+
+# Env & secrets
+.env
+.env.local
+
+# Project outputs
+output/
+*.zip
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local staging / presigned url temp
+.staging/
+.presigned_url.txt

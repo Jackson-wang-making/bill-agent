@@ -1,0 +1,49 @@
+llm:
+  model: deepseek-flash
+  reasoner_model: deepseek-flash
+  ar_ap_reasoner: true        # AR/AP 佐证用 reasoner 强模型（架构 §3.3）
+  api_base: https://api.deepseek.com
+  temperature: 0.0
+confidence:
+  T_high: 0.9
+  T_low: 0.6
+retry:
+  max_extract_retries: 3
+  max_match_retries: 3
+  max_ocr_retries: 2          # OCR 网关瞬时错误（5xx/连接/超时）指数退避重试
+  ocr_retry_backoff: 2.0
+ocr:
+  url: https://gateway.pltplt.com/ai/process
+  task: orderChange
+  timeout_connect: 10
+  timeout_read: 300
+  pdf_mode: always          # 题目要求 PDF 统一走 OCR；OCR 不可达时自动降级文本层
+stage:
+  backend: oss
+  local:
+    host: 127.0.0.1
+    port: 8787
+    dir: .staging
+    public_base_url: null
+  s3:
+    endpoint: http://localhost:9000
+    # 网关侧访问的地址。必须填「国内公网可达」的 endpoint（OSS/COS/自建反代/隧道）；
+    # 留空则回退到本地 endpoint，OCR 自动判定为不可用并降级 PDF 文本层。
+    public_endpoint: null
+    access_key: minioadmin
+    secret_key: minioadmin123
+    bucket: bill-files
+    presign_expiry_hours: 24
+  # 阿里云 OSS：上传与取件都是同一个国内公网 endpoint，网关直接可达。
+  # 用 oss2 原生签名（OSS 全区域支持），不受 MinIO SDK 的 SigV4 限制。
+  # 启用：stage.backend 改为 oss，并填下面的 endpoint 与凭据。
+  oss:
+    endpoint: oss-cn-shanghai.aliyuncs.com   # 按你的 Bucket 区域改；可不带 https://（代码强制 HTTPS）
+    access_key: ""           # 或 .env: OSS_ACCESS_KEY_ID
+    secret_key: ""           # 或 .env: OSS_ACCESS_KEY_SECRET
+    bucket: rag-data-2026       # 需先在阿里云控制台创建
+    presign_expiry_hours: 24
+budget:
+  max_total_tokens: 200000
+  max_ocr_calls: 20
+accounting_entity: ''

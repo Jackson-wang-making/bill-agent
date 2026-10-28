@@ -1,0 +1,59 @@
+{
+  "data": {
+    "createDate": "2026-10-27 20:00:24",
+    "fileName": "dummy.pdf",
+    "list": [
+      {
+        "customsClearance": "",
+        "customsReleaseStatus": "",
+        "fileType": "DEBIT-NOTE",
+        "firmsCode": "",
+        "cyFirmsCode": "",
+        "inlandArrivalDate": "",
+        "invoiceNumber": "DC-108478",
+        "loadedOnRailDate": "",
+        "mblNumber": "MAEU275752922",
+        "itNumber": "",
+        "itDate": "",
+        "itLocation": "",
+        "pickupLocation": "",
+        "remark": "",
+        "revisedEtaOfDestination": "",
+        "shipper": "YIWU JINBAIREN IMPORT & EXPORT CO., LTD.",
+        "consignee": "NEPTUNE SHIPPING LIMITED",
+        "usCustomsStatus": "",
+        "ctrList": [
+          {"ctrNo": "SAPU2040689", "ctrType": "20ST", "sealNo": "C9950614"}
+        ],
+        "chargeList": [
+          {
+            "chargeName": "Handling Charge",
+            "amount": 40.0,
+            "currency": "USD",
+            "quantity": 1,
+            "unitPrice": 40.0
+          },
+          {
+            "chargeName": "Documentation Fee",
+            "amount": 50.0,
+            "currency": "USD",
+            "quantity": 1,
+            "unitPrice": 50.0
+          }
+        ],
+        "hold": {"holdType": "", "holdDate": "", "holdDesc": ""},
+        "other": [],
+        "suspicious": "N",
+        "isDetention": "N",
+        "isDemurrage": "N",
+        "page_index": [0, 1]
+      }
+    ],
+    "orderType": "None",
+    "pages_split": 2
+  },
+  "success": true,
+  "message": "文档解析成功",
+  "error_code": 0,
+  "task_id": "fixture-task-id"
+}
