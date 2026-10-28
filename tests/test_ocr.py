@@ -1059,3 +1059,36 @@ def test_ocr_degraded_retry_disabled_raises_original(monkeypatch, tmp_path):
     with pytest.raises(requests.exceptions.HTTPError):
         ocr.parse_ocr(str(_png_file(tmp_path)))
     assert len(calls) == 1, "降采样关闭时不得二次识别"
+
+
+def test_ocr_pdf_adds_text_layer_supplement(monkeypatch, tmp_path):
+    """含文本层的 PDF：OCR 成功后追加本地全文，补回网关漏掉的币种/分页内容。"""
+    import pymupdf
+    from types import SimpleNamespace
+
+    pdf = tmp_path / "a.pdf"
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 72), "CHARGES CUR AMOUNT On Carriage USD 245.00")
+    doc.save(str(pdf))
+    doc.close()
+
+    monkeypatch.setattr(ocr, "config", SimpleNamespace(
+        ocr_cache_enabled=False, ocr_cache_ttl_seconds=3600,
+        ocr_degrade_enabled=False, ocr_degrade_scale=0.5,
+        ocr_pdf_text_supplement=True,
+    ))
+    monkeypatch.setattr(ocr, "_ocr_cache", {})
+    monkeypatch.setattr(ocr, "get_budget", lambda: BudgetTracker(1000, 3))
+    monkeypatch.setattr(ocr, "ocr_delivery_blocker", lambda: None)
+    monkeypatch.setattr(ocr, "stage_local_file", lambda p: "https://x.example.com/f.pdf")
+    monkeypatch.setattr(ocr, "call_ocr", lambda url, task=None: {
+        "success": True, "error_code": 0,
+        "data": {"list": [{"chargeList": [{"chargeItem": "On Carriage", "amount": "245.00"}]}]},
+    })
+
+    docs = ocr.parse_ocr(str(pdf))
+    assert docs[0]["type"] == "ocr"
+    supplements = [d for d in docs if d.get("meta", {}).get("ocr_supplement")]
+    assert supplements, "含文本层的 PDF 必须追加本地全文补充"
+    assert any("USD" in d["raw_text"] for d in supplements)

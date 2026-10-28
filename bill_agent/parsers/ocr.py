@@ -165,6 +165,32 @@ def _recover(path: str, meta: dict[str, Any]) -> list[dict[str, Any]] | None:
     return _degraded_retry(path, reason)
 
 
+def _supplement_pdf_text(path: str, docs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """OCR 成功但 PDF 有文本层时，追加本地全文作为补充上下文。
+
+    网关可能只返回部分页/部分字段（真实样例漏掉了 CUR/USD）；文本层能补回
+    币种与后续页内容。OCR 仍是主结果，补充 doc 单独标注 ocr_supplement。
+    """
+    if not str(path).lower().endswith(".pdf"):
+        return docs
+    if not getattr(config, "ocr_pdf_text_supplement", True):
+        return docs
+    from bill_agent.parsers.dispatcher import _inspect_pdf
+    from bill_agent.parsers.pdf_text import parse_pdf_text
+
+    has_text, err = _inspect_pdf(path)
+    if err is not None or not has_text:
+        return docs
+    try:
+        supplement = parse_pdf_text(path)
+    except Exception:  # noqa: BLE001 - 补充失败不影响 OCR 主结果
+        return docs
+    if not (supplement.get("raw_text") or "").strip() and not supplement.get("tables"):
+        return docs
+    supplement.setdefault("meta", {})["ocr_supplement"] = True
+    return [*docs, supplement]
+
+
 def _is_transient_ocr_error(e: Exception) -> bool:
     """只有网关瞬时故障才值得重试：5xx / 连接失败 / 超时；4xx 是客户端错误。"""
     if isinstance(e, requests.exceptions.HTTPError):
@@ -490,5 +516,6 @@ def parse_ocr(path: str) -> list[dict]:
     if skipped:
         # 混合 list：非 dict / 空条目可能是网关未能结构化的单据，打标记进审计轨迹，不静默丢弃
         docs[0].setdefault("meta", {})["ocr_skipped_items"] = skipped
+    docs = _supplement_pdf_text(str(path), docs)
     _ocr_cache_put(path, docs)
     return docs

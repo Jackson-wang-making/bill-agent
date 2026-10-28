@@ -29,6 +29,10 @@ def is_valid_amount(v: Any) -> bool:
 
 
 def is_valid_currency(code: Any) -> bool:
+    if code is None:
+        # 题目要求：无法提取的字段使用 null。null 不是「非法币种」，
+        # 不能因为缺失币种就逼模型在重试中编造一个币种。
+        return True
     return isinstance(code, str) and code.upper() in ISO_4217
 
 

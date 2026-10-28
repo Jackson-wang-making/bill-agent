@@ -134,5 +134,9 @@ def extract(
         HumanMessage(content=user_prompt),
     ]
     result = chain.invoke(messages)
+    if result is None:
+        # 防御：解析器/模型返回空结果时给出明确错误，交给上层重试或转人工，
+        # 不能带着 None 去访问 model_dump_json。
+        raise RuntimeError("模型未返回结构化提取结果（空响应）")
     budget.record_tokens(estimated + max(1, len(result.model_dump_json()) // _CHARS_PER_TOKEN))
     return result

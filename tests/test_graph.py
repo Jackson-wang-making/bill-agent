@@ -19,6 +19,31 @@ def test_trace_node_returns_result_and_logs_summary(caplog):
     assert "out=[output_records]" in caplog.text
 
 
+def test_second_confirm_passes_full_extraction_result(monkeypatch):
+    """语义复核必须拿到 document_info/交易方，不能只传 charges 导致误报缺字段。"""
+    import bill_agent.graph.nodes.validate_extract as ve
+
+    captured = {}
+
+    def fake_check(result, doc_text):
+        captured.update(result)
+        return None
+
+    monkeypatch.setattr(ve, "semantic_check", fake_check)
+    out = ve.second_confirm_node({
+        "document_info": {"document_type": "PAI-CMA-NOTICE"},
+        "transaction_party": {"issuer": "A", "recipient": "B"},
+        "extracted_charges": [{"charge_item": "On Carriage", "amount": 245.0,
+                               "currency": "USD"}],
+        "subtotal": None, "tax": None, "total": None,
+        "parsed_documents": [], "iteration": 1,
+    })
+
+    assert captured["document_info"]["document_type"] == "PAI-CMA-NOTICE"
+    assert captured["transaction_party"]["issuer"] == "A"
+    assert out["second_confirm_status"] == "pass"
+
+
 def test_graph_compiles():
     g = build_graph()
     assert g.compile() is not None

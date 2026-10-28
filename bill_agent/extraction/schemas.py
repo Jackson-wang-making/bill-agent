@@ -29,8 +29,8 @@ class ChargeItem(BaseModel):
     charge_item: str = Field(description="原始费用名称（保留原文）")
     quantity: Optional[float] = Field(default=None, description="数量")
     unit_price: Optional[float] = Field(default=None, description="单价")
-    amount: float = Field(description="金额（数字类型）")
-    currency: str = Field(description="三位币种代码，如 USD/CNY")
+    amount: Optional[float] = Field(default=None, description="金额（数字类型；无法提取用 null）")
+    currency: Optional[str] = Field(default=None, description="三位币种代码，如 USD/CNY；无法提取用 null")
     payment_term: Optional[str] = Field(default=None, description="PP(预付)/CC(到付)")
     confidence: float = Field(default=1.0, ge=0.0, le=1.0, description="该项提取置信度 0-1")
 

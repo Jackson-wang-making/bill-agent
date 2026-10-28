@@ -57,6 +57,14 @@ class Config:
     def llm_temperature(self) -> float:
         return self.settings.get("llm", {}).get("temperature", 0.0)
 
+    @property
+    def llm_structured_thinking(self) -> bool:
+        """结构化提取是否保留思考模式。
+
+        思考模式不支持 tool_choice；函数调用式结构化输出必须关闭它。
+        """
+        return self.settings.get("llm", {}).get("structured_thinking", False)
+
     # ---- 置信度阈值 ----
     @property
     def t_high(self) -> float:
@@ -127,6 +135,11 @@ class Config:
     @property
     def ocr_degrade_scale(self) -> float:
         return float(self.settings.get("ocr", {}).get("degrade_scale", 0.5))
+
+    @property
+    def ocr_pdf_text_supplement(self) -> bool:
+        """OCR 成功后是否追加 PDF 本地文本层全文（补回网关漏掉的字段/页）。"""
+        return self.settings.get("ocr", {}).get("pdf_text_supplement", True)
 
     # ---- 对象存储 stage ----
     @property

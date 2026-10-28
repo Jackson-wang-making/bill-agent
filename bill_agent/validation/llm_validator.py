@@ -17,7 +17,7 @@ def semantic_check(result: dict, doc_text: str) -> str | None:
     llm = get_llm()
     msg = [
         SystemMessage(content=_PROMPT),
-        HumanMessage(content=f"提取结果：\n{result}\n\n原文片段：\n{doc_text[:6000]}"),
+        HumanMessage(content=f"提取结果：\n{result}\n\n原文片段：\n{doc_text[:30000]}"),
     ]
     resp = llm.invoke(msg)
     text = str(resp.content).strip()

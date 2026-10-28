@@ -77,6 +77,7 @@ def test_unknown_keeps_original():
 def test_currency_upper():
     assert normalize_currency("usd") == "USD"
     assert normalize_currency("cny") == "CNY"
+    assert normalize_currency(None) is None
 
 
 def test_payment_term():

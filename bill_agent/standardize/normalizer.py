@@ -78,9 +78,12 @@ def suggest_charge_name(raw_name: str) -> str | None:
     return None
 
 
-def normalize_currency(code: str) -> str:
-    """币种统一三位大写。"""
-    return str(code).strip().upper()[:3]
+def normalize_currency(code: str | None) -> str | None:
+    """币种统一三位大写；无法提取时保持 null，不能变成 'NON'。"""
+    if code is None:
+        return None
+    text = str(code).strip().upper()
+    return text[:3] or None
 
 
 def normalize_payment_term(term: str | None) -> str | None:

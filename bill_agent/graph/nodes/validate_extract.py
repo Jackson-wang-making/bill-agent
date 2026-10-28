@@ -36,8 +36,16 @@ def second_confirm_node(state: dict[str, Any]) -> dict[str, Any]:
     """中等置信度费用项做 LLM 语义复核；复核本身不可用时转人工，不得静默放行。"""
     doc_text = docs_to_text(state.get("parsed_documents", []))
     charges = state.get("extracted_charges", [])
+    result = {
+        "document_info": state.get("document_info", {}),
+        "transaction_party": state.get("transaction_party", {}),
+        "charges": charges,
+        "subtotal": state.get("subtotal"),
+        "tax": state.get("tax"),
+        "total": state.get("total"),
+    }
     try:
-        issue = semantic_check({"charges": charges}, doc_text)
+        issue = semantic_check(result, doc_text)
         status = "pass" if issue is None else "fail"
     except Exception as e:  # noqa: BLE001 - 复核不可用不能当成通过：
         # 否则中等置信度单据会产出「看起来自动通过、实际从未复核」的 CREATE，

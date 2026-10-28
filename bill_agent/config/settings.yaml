@@ -1,6 +1,7 @@
 llm:
   model: deepseek-flash
   reasoner_model: deepseek-flash
+  structured_thinking: false  # 结构化提取关闭思考模式（思考模式不支持 tool_choice）
   ar_ap_reasoner: true        # AR/AP 佐证用 reasoner 强模型（架构 §3.3）
   api_base: https://api.deepseek.com
   temperature: 0.0
@@ -22,6 +23,7 @@ ocr:
   cache_ttl_seconds: 3600
   degrade_enabled: true     # 扫描件/图片 OCR 失败后降采样二次识别
   degrade_scale: 0.5
+  pdf_text_supplement: true # OCR 成功后追加 PDF 文本层全文（补回漏掉的币种/页）
 stage:
   backend: oss
   local:

@@ -17,6 +17,7 @@ def test_valid_amount():
 def test_valid_currency():
     assert is_valid_currency("USD")
     assert is_valid_currency("usd")
+    assert is_valid_currency(None), "无法提取的币种按题目要求允许 null"
     assert not is_valid_currency("US")
     assert not is_valid_currency(123)
 

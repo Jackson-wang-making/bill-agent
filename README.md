@@ -110,7 +110,7 @@ MinIO 本地起法：`docker compose up -d`，凭据读 `.env` 的 `MINIO_ROOT_U
 ## 测试
 
 ```bash
-uv run pytest -q     # 196 passed
+uv run pytest -q     # 201 passed
 ```
 
 - `test_matching / test_normalize / test_validation / test_parsers / test_output / test_ar_ap / test_ocr`：确定性业务逻辑，含冲突判定、日期归一化、OCR 响应映射（真实 schema 空占位判定；fileType/布尔/Y-N 标记不算内容，垃圾条目回退 PDF 文本层）、S3/OSS staging 路由、EML 内联/单部件附件与扩展名补全、非法文件名（含 Windows 设备名）/未知 charset/签名与日历部件跳过、附件落盘失败隔离、EML/Word 临时目录清理（成功与异常路径）、解析提示限长与单行化（4k 日历部件不再挤掉正文；300 字截断后聚合总数仍可见）、OCR staging 失败回退与预算回滚、OCR 不可用时 PDF 降级与打开错误透传。
@@ -137,3 +137,5 @@ uv run pytest -q     # 196 passed
 - 可选 checkpointer（`persistence.checkpointer = none|memory|sqlite`，默认 `none`）；开启后每次运行以 correlation_id 作为 thread_id 写入 checkpoint，并记录每节点耗时、输出键与 token/OCR 预算快照。
 - OCR 失败降级链：PDF 文本层 → 扫描件/图片降采样二次识别（`ocr.degrade_enabled` / `ocr.degrade_scale`）→ 仍失败转人工。
 - 费用名未命中字典时，可开启 `standardize.suggest_enabled` 给出建议标准名（离线确定性模糊匹配，供回填字典）。
+- DeepSeek V4 思考模式不支持 `tool_choice`：结构化提取关闭思考并走 JSON mode（`llm.structured_thinking: false`），避免 400；AR/AP 仍保留思考模式。
+- OCR 成功后对含文本层的 PDF 追加本地全文补充（`ocr.pdf_text_supplement`），补回网关漏掉的币种/后续页内容。
