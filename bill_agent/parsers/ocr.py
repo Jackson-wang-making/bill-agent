@@ -9,6 +9,10 @@
 """
 from __future__ import annotations
 
+import copy
+import hashlib
+import threading
+import time
 from typing import Any, Iterable
 
 import requests
@@ -28,10 +32,50 @@ _OK_ERROR_CODES = (None, 0, "0", 200, "200")
 # C:\Users\<用户>）。窗口只用于限制不可信文本的扫描成本。
 _SCAN_MAX = 200_000
 
+# OCR 结果缓存：键 = (文件内容哈希, 路径)，值 = (写入时间, 解析文档深拷贝)。
+# 命中缓存不调网关、不扣 OCR 预算；TTL 过期自动淘汰。完整内容参与哈希，
+# 同名不同内容的文件不会互相污染。
+_ocr_cache: dict[tuple[str, str], tuple[float, list[dict[str, Any]]]] = {}
+_ocr_cache_lock = threading.Lock()
+
 
 def _clean_excerpt(value: Any, limit: int) -> str:
     """不可信响应片段的审计摘要：截窗口（保住 marker）→ 脱敏 → 限长。"""
     return clean_error(str(value)[:_SCAN_MAX])[:limit]
+
+
+def _file_content_hash(path: str) -> str:
+    """文件完整内容哈希：缓存键必须覆盖全文，不能只用路径或前 N 字节。"""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _ocr_cache_get(path: str) -> list[dict[str, Any]] | None:
+    """缓存命中返回解析文档深拷贝；未命中或过期返回 None。"""
+    if not getattr(config, "ocr_cache_enabled", True):
+        return None
+    key = (_file_content_hash(path), str(path))
+    with _ocr_cache_lock:
+        entry = _ocr_cache.get(key)
+        if entry is None:
+            return None
+        stored_at, docs = entry
+        if time.time() - stored_at > getattr(config, "ocr_cache_ttl_seconds", 3600):
+            _ocr_cache.pop(key, None)
+            return None
+        return copy.deepcopy(docs)
+
+
+def _ocr_cache_put(path: str, docs: list[dict[str, Any]]) -> None:
+    """缓存一次成功的 OCR 解析结果（只缓存成功，不缓存降级/失败）。"""
+    if not getattr(config, "ocr_cache_enabled", True):
+        return
+    key = (_file_content_hash(path), str(path))
+    with _ocr_cache_lock:
+        _ocr_cache[key] = (time.time(), copy.deepcopy(docs))
 
 
 def _is_transient_ocr_error(e: Exception) -> bool:
@@ -281,6 +325,16 @@ def parse_ocr(path: str) -> list[dict]:
             return [doc]
         raise RuntimeError(hint)
 
+    cached = _ocr_cache_get(path)
+    if cached is not None:
+        # 命中缓存：不 stage、不调网关、不扣预算。审计里明确标注缓存命中，
+        # 且不携带上一轮的预签名 URL（已过期，只会误导审计）。
+        for d in cached:
+            d["source_file"] = str(path)
+            d.setdefault("meta", {})["ocr_cached"] = True
+            d["meta"]["file_url"] = None
+        return cached
+
     budget = get_budget()
     # 预算内原子占位后再发起网络调用：并行分支共享计数器时，
     # check-then-record 会让多个分支同时通过检查
@@ -358,4 +412,5 @@ def parse_ocr(path: str) -> list[dict]:
     if skipped:
         # 混合 list：非 dict / 空条目可能是网关未能结构化的单据，打标记进审计轨迹，不静默丢弃
         docs[0].setdefault("meta", {})["ocr_skipped_items"] = skipped
+    _ocr_cache_put(path, docs)
     return docs

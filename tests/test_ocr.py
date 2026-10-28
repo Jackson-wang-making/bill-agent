@@ -919,3 +919,76 @@ def test_call_ocr_does_not_retry_client_errors(monkeypatch):
     with pytest.raises(requests.exceptions.HTTPError):
         ocr.call_ocr("https://x.example.com/f.pdf")
     assert len(calls) == 1, "4xx 不得重试"
+
+
+def _cache_env(monkeypatch, budget, ttl=3600, enabled=True):
+    """绕过 staging/网络/配置，直接驱动 parse_ocr 的缓存路径。"""
+    from types import SimpleNamespace
+
+    calls = []
+
+    def fake_call(url, task=None):
+        calls.append(url)
+        return {"success": True, "error_code": 0,
+                "data": {"list": [{"fileType": "INVOICE", "invoiceNumber": "X1"}]}}
+
+    monkeypatch.setattr(ocr, "config", SimpleNamespace(
+        ocr_cache_enabled=enabled, ocr_cache_ttl_seconds=ttl,
+    ))
+    monkeypatch.setattr(ocr, "_ocr_cache", {})
+    monkeypatch.setattr(ocr, "get_budget", lambda: budget)
+    monkeypatch.setattr(ocr, "ocr_delivery_blocker", lambda: None)
+    monkeypatch.setattr(ocr, "stage_local_file", lambda p: "https://x.example.com/f.png")
+    monkeypatch.setattr(ocr, "call_ocr", fake_call)
+    return calls
+
+
+def test_ocr_cache_hit_skips_gateway_and_budget(monkeypatch, tmp_path):
+    """同一文件重复解析：第二次命中缓存，不再调网关、不再扣 OCR 预算。"""
+    budget = BudgetTracker(1000, 2)
+    calls = _cache_env(monkeypatch, budget)
+    img = tmp_path / "a.png"
+    img.write_bytes(b"\x89PNG\r\n")
+
+    first = ocr.parse_ocr(str(img))
+    second = ocr.parse_ocr(str(img))
+
+    assert len(calls) == 1, "第二次应命中缓存，不得再调网关"
+    assert budget.ocr_calls == 1, "缓存命中不得消耗 OCR 预算"
+    assert first[0]["meta"].get("ocr_cached") is not True
+    assert second[0]["meta"].get("ocr_cached") is True
+    assert second[0]["meta"].get("file_url") is None, "缓存命中不得暴露过期预签名 URL"
+
+
+def test_ocr_cache_keys_on_full_file_content(monkeypatch, tmp_path):
+    """同名不同内容的文件不得互相污染：内容变化后必须重新调网关。"""
+    budget = BudgetTracker(1000, 5)
+    calls = _cache_env(monkeypatch, budget)
+    img = tmp_path / "a.png"
+    img.write_bytes(b"\x89PNG\r\nAAAA")
+
+    ocr.parse_ocr(str(img))
+    img.write_bytes(b"\x89PNG\r\nBBBB")
+    ocr.parse_ocr(str(img))
+
+    assert len(calls) == 2, "文件内容不同，不得命中旧缓存"
+
+
+def test_ocr_cache_expires_after_ttl(monkeypatch, tmp_path):
+    """缓存按 TTL 过期：超过 TTL 后同一文件重新调网关。"""
+    from types import SimpleNamespace
+
+    budget = BudgetTracker(1000, 5)
+    calls = _cache_env(monkeypatch, budget, ttl=1)
+    clock = [0.0]
+    monkeypatch.setattr(ocr, "time", SimpleNamespace(time=lambda: clock[0]))
+    img = tmp_path / "a.png"
+    img.write_bytes(b"\x89PNG\r\n")
+
+    ocr.parse_ocr(str(img))
+    ocr.parse_ocr(str(img))
+    assert len(calls) == 1
+
+    clock[0] = 2.0
+    ocr.parse_ocr(str(img))
+    assert len(calls) == 2, "超过 TTL 后必须重新调网关"

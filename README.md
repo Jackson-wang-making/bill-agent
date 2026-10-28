@@ -110,7 +110,7 @@ MinIO 本地起法：`docker compose up -d`，凭据读 `.env` 的 `MINIO_ROOT_U
 ## 测试
 
 ```bash
-uv run pytest -q     # 183 passed
+uv run pytest -q     # 191 passed
 ```
 
 - `test_matching / test_normalize / test_validation / test_parsers / test_output / test_ar_ap / test_ocr`：确定性业务逻辑，含冲突判定、日期归一化、OCR 响应映射（真实 schema 空占位判定；fileType/布尔/Y-N 标记不算内容，垃圾条目回退 PDF 文本层）、S3/OSS staging 路由、EML 内联/单部件附件与扩展名补全、非法文件名（含 Windows 设备名）/未知 charset/签名与日历部件跳过、附件落盘失败隔离、EML/Word 临时目录清理（成功与异常路径）、解析提示限长与单行化（4k 日历部件不再挤掉正文；300 字截断后聚合总数仍可见）、OCR staging 失败回退与预算回滚、OCR 不可用时 PDF 降级与打开错误透传。
@@ -120,6 +120,7 @@ uv run pytest -q     # 183 passed
 - `test_graph`：图编译、中置信度走二次确认、无 key 时降级转 `PENDING_REVIEW`、临时路径脱敏（从行内**可信**路径起点起脱敏的保守策略——起点之前不能出现路径分隔符、左邻必须是外部边界，根被 CJK/ASCII 词粘住时整行脱敏；同行的普通路径也会被一并隐去，换取任何路径形态都不泄漏用户名；覆盖含空格与 , ; : 的组件、`：`/`=`/`->` 后无空格的起点、UNC 与 repr/JSON 四反斜杠根、根相对、大写 marker、生成式 6×7×7×4×9 组合矩阵、`见`/`see` 粘连根与组件以 `(`/`:` 结尾、marker 后紧跟空白/引号的精确终点、marker 与终点同时密集时的线性复杂度）、按实际 prompt 估算 token 预算。
 - `tests/fixtures/ocr_response_real.json` 是 OCR API 的真实响应，钉住响应结构，防止解析层再退化。
 - `test_ocr` 钉住 OCR 网关瞬时错误（5xx/连接/超时）按 `retry.max_ocr_retries` 指数退避重试、4xx 客户端错误不重试；`test_ar_ap` 钉住 AR/AP 佐证走 `deepseek-reasoner` 强模型。
+- `test_ocr` 新增 OCR 结果缓存（完整内容哈希键、TTL 过期、命中不调网关不扣预算）；`test_graph` 新增可选 checkpointer（none/memory/sqlite）与每节点耗时/输出键/预算快照追踪。
 
 ## 说明
 
@@ -131,3 +132,5 @@ uv run pytest -q     # 183 passed
 - AR/AP 先按「记账主体在单据中的角色 × 单据类型」给出确定性方向，再由 LLM 结合原文佐证；两者冲突、或记账主体不是签发方/接收方 → `posting_type: null` + 转人工，不猜。
 - `config/settings.yaml` 的 `budget.max_total_tokens / max_ocr_calls` 在提取与 OCR 调用前强制检查，超限快速失败而非继续烧 token。
 - OCR 网关瞬时错误按 `retry.max_ocr_retries` 指数退避重试，4xx 客户端错误立即上抛；每个图节点记录进入/退出与耗时（correlation_id 结构化日志）。
+- OCR 结果按文件内容哈希缓存（`ocr.cache_enabled` / `ocr.cache_ttl_seconds`），同一文件重复处理不重复调网关、不扣 OCR 预算。
+- 可选 checkpointer（`persistence.checkpointer = none|memory|sqlite`，默认 `none`）；开启后每次运行以 correlation_id 作为 thread_id 写入 checkpoint，并记录每节点耗时、输出键与 token/OCR 预算快照。

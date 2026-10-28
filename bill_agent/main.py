@@ -13,7 +13,7 @@ from typing import Any
 
 from bill_agent.config import config
 from bill_agent.graph.builder import build_graph
-from bill_agent.harness.budget import reset_budget
+from bill_agent.harness.budget import get_budget, reset_budget
 from bill_agent.harness.logger import get_logger, new_correlation_id
 
 
@@ -29,19 +29,43 @@ def _config_snapshot() -> dict[str, Any]:
     }
 
 
+def build_checkpointer():
+    """按配置构造 LangGraph checkpointer（none 返回 None，保持无状态单次运行）。"""
+    kind = config.checkpointer
+    if kind == "none":
+        return None
+    if kind == "memory":
+        from langgraph.checkpoint.memory import InMemorySaver
+
+        return InMemorySaver()
+    if kind == "sqlite":
+        import sqlite3
+
+        from langgraph.checkpoint.sqlite import SqliteSaver
+
+        path = config.checkpointer_sqlite_path
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        # 图节点可能在并行线程里跑：SQLite 连接必须允许跨线程
+        conn = sqlite3.connect(path, check_same_thread=False)
+        return SqliteSaver(conn)
+    raise ValueError(f"未知 checkpointer 配置：{kind}（可选 none / memory / sqlite）")
+
+
 def run_bill_agent(
     source_files: list[str],
     existing_bills: list[dict[str, Any]] | None = None,
     accounting_entity: str | None = None,
+    checkpointer=None,
 ) -> list[dict[str, Any]]:
     """运行整条图，返回标准输出记录列表。"""
-    new_correlation_id()
+    cid = new_correlation_id()
     # 每次运行独立预算：CLI 重复调用与 Web 线程池复用线程时，计数不得跨任务累计
     reset_budget()
     log = get_logger("bill_agent")
     log.info("start bill agent: %d files", len(source_files))
 
-    graph = build_graph().compile()
+    saver = build_checkpointer() if checkpointer is None else checkpointer
+    graph = build_graph().compile(checkpointer=saver)
     initial: dict[str, Any] = {
         "source_files": [{"path": str(f), "mime": None} for f in source_files],
         "existing_bills": existing_bills or [],
@@ -51,7 +75,16 @@ def run_bill_agent(
         "retry_count": 0,
         "budget_consumed": {"tokens": 0, "ocr_calls": 0},
     }
-    result = graph.invoke(initial)
+    if saver is not None:
+        result = graph.invoke(initial, config={"configurable": {"thread_id": cid}})
+    else:
+        result = graph.invoke(initial)
+    log.info(
+        "finish bill agent: %d files -> %d records, budget=%s",
+        len(source_files),
+        len(result.get("output_records", [])),
+        get_budget().snapshot(),
+    )
     return result.get("output_records", [])
 
 

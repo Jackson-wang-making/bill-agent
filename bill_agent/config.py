@@ -110,6 +110,15 @@ class Config:
         """always：PDF 也走 OCR（题目要求）；scanned_only：有文本层则本地提取。"""
         return self.settings.get("ocr", {}).get("pdf_mode", "always")
 
+    @property
+    def ocr_cache_enabled(self) -> bool:
+        """同一文件内容命中 OCR 缓存时不重复调网关、不扣 OCR 预算。"""
+        return self.settings.get("ocr", {}).get("cache_enabled", True)
+
+    @property
+    def ocr_cache_ttl_seconds(self) -> int:
+        return int(self.settings.get("ocr", {}).get("cache_ttl_seconds", 3600))
+
     # ---- 对象存储 stage ----
     @property
     def stage(self) -> dict[str, Any]:
@@ -135,6 +144,18 @@ class Config:
     def accounting_entity(self) -> str:
         return self.settings.get("accounting_entity", "") or os.getenv(
             "ACCOUNTING_ENTITY", ""
+        )
+
+    # ---- 持久化 ----
+    @property
+    def checkpointer(self) -> str:
+        """none | memory | sqlite。默认 none，保持单次运行行为。"""
+        return self.settings.get("persistence", {}).get("checkpointer", "none")
+
+    @property
+    def checkpointer_sqlite_path(self) -> str:
+        return self.settings.get("persistence", {}).get(
+            "sqlite_path", "output/checkpoints.sqlite"
         )
 
 

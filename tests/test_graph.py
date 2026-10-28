@@ -3,9 +3,77 @@ from bill_agent.graph.builder import build_graph
 from bill_agent.main import run_bill_agent
 
 
+def test_trace_node_returns_result_and_logs_summary(caplog):
+    """节点追踪透传返回值，并记录耗时与输出键摘要（不序列化 state 值）。"""
+    import logging
+
+    from bill_agent.harness.logger import trace_node
+
+    with caplog.at_level(logging.INFO):
+        out = trace_node("probe", lambda state: {"output_records": [1]})(
+            {"parsed_documents": [{"raw_text": "secret"}]}
+        )
+
+    assert out == {"output_records": [1]}
+    assert "elapsed=" in caplog.text
+    assert "out=[output_records]" in caplog.text
+
+
 def test_graph_compiles():
     g = build_graph()
     assert g.compile() is not None
+
+
+def test_build_checkpointer_default_is_none():
+    """默认不启用 checkpointer：单次 CLI 与离线测试行为保持不变。"""
+    from bill_agent.main import build_checkpointer
+
+    assert build_checkpointer() is None
+
+
+def test_build_checkpointer_memory(monkeypatch):
+    from types import SimpleNamespace
+
+    import bill_agent.main as main
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    monkeypatch.setattr(
+        main, "config",
+        SimpleNamespace(checkpointer="memory", checkpointer_sqlite_path=""),
+    )
+    assert isinstance(main.build_checkpointer(), InMemorySaver)
+
+
+def test_build_checkpointer_sqlite_creates_file(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    import bill_agent.main as main
+    from langgraph.checkpoint.sqlite import SqliteSaver
+
+    db = tmp_path / "checkpoints.sqlite"
+    monkeypatch.setattr(
+        main, "config",
+        SimpleNamespace(checkpointer="sqlite", checkpointer_sqlite_path=str(db)),
+    )
+
+    saver = main.build_checkpointer()
+    assert isinstance(saver, SqliteSaver)
+    assert db.exists()
+
+
+def test_run_bill_agent_with_checkpointer(monkeypatch, tmp_path):
+    """带 checkpointer 编译图后仍能跑通整条管线，不改变输出。"""
+    import sqlite3
+
+    from langgraph.checkpoint.sqlite import SqliteSaver
+    from tests.test_e2e_mock import _mock_extract, _result, _write_docx
+
+    _mock_extract(monkeypatch, _result())
+    records = run_bill_agent(
+        [_write_docx(tmp_path)], [], "A Shipping",
+        checkpointer=SqliteSaver(sqlite3.connect(":memory:", check_same_thread=False)),
+    )
+    assert [r["operation"] for r in records] == ["CREATE"]
 
 
 def test_unknown_file_routes_to_pending_review(tmp_path):

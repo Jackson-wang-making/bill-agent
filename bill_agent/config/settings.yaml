@@ -18,6 +18,8 @@ ocr:
   timeout_connect: 10
   timeout_read: 300
   pdf_mode: always          # 题目要求 PDF 统一走 OCR；OCR 不可达时自动降级文本层
+  cache_enabled: true       # 同一文件内容命中缓存不重复调网关、不扣 OCR 预算
+  cache_ttl_seconds: 3600
 stage:
   backend: oss
   local:
@@ -47,3 +49,6 @@ budget:
   max_total_tokens: 200000
   max_ocr_calls: 20
 accounting_entity: ''
+persistence:
+  checkpointer: none          # none | memory | sqlite；默认关闭，单次运行行为不变
+  sqlite_path: output/checkpoints.sqlite
