@@ -29,7 +29,7 @@ def _config_snapshot() -> dict[str, Any]:
     }
 
 
-def build_checkpointer():
+def build_checkpointer() -> Any:
     """按配置构造 LangGraph checkpointer（none 返回 None，保持无状态单次运行）。"""
     kind = config.checkpointer
     if kind == "none":
@@ -55,7 +55,7 @@ def run_bill_agent(
     source_files: list[str],
     existing_bills: list[dict[str, Any]] | None = None,
     accounting_entity: str | None = None,
-    checkpointer=None,
+    checkpointer: Any | None = None,
 ) -> list[dict[str, Any]]:
     """运行整条图，返回标准输出记录列表。"""
     cid = new_correlation_id()

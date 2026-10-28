@@ -69,5 +69,11 @@ def reset_budget() -> None:
     _CURRENT.set(BudgetTracker(config.max_total_tokens, config.max_ocr_calls))
 
 
+def snapshot_budget() -> dict[str, int] | None:
+    """当前上下文预算快照；未初始化返回 None（不隐式创建预算实例）。"""
+    tracker = _CURRENT.get()
+    return tracker.snapshot() if tracker is not None else None
+
+
 class BudgetExceeded(RuntimeError):
     """预算耗尽：调用方应降级而非重试。"""

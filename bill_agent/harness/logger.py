@@ -56,10 +56,9 @@ def _state_summary(state) -> str:
 def _live_budget():
     """当前运行上下文的 token/OCR 用量快照；未初始化则返回 None。"""
     try:
-        from bill_agent.harness.budget import _CURRENT
+        from bill_agent.harness.budget import snapshot_budget
 
-        tracker = _CURRENT.get()
-        return tracker.snapshot() if tracker is not None else None
+        return snapshot_budget()
     except Exception:  # noqa: BLE001 - 日志绝不能影响主流程
         return None
 
