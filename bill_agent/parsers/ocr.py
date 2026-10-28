@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import os
+import tempfile
 import threading
 import time
 from typing import Any, Iterable
@@ -76,6 +78,91 @@ def _ocr_cache_put(path: str, docs: list[dict[str, Any]]) -> None:
     key = (_file_content_hash(path), str(path))
     with _ocr_cache_lock:
         _ocr_cache[key] = (time.time(), copy.deepcopy(docs))
+
+
+def _docs_from_items(items: Any, path: str, source_url: str) -> list[dict[str, Any]]:
+    """把网关 data.list 映射为解析文档，跳过非 dict 与无可提取内容的条目。"""
+    if not isinstance(items, list):
+        return []
+    docs: list[dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        doc = _item_to_doc(item, str(path), source_url)
+        if _doc_has_content(doc):
+            docs.append(doc)
+    return docs
+
+
+def _render_downscaled(path: str) -> str | None:
+    """把 PDF/图片渲染成降采样 PNG，供二次 OCR；失败返回 None。"""
+    try:
+        import pymupdf
+
+        scale = float(getattr(config, "ocr_degrade_scale", 0.5) or 0.5)
+        doc = pymupdf.open(path)
+        try:
+            pix = doc[0].get_pixmap(matrix=pymupdf.Matrix(scale, scale))
+        finally:
+            doc.close()
+        fd, out = tempfile.mkstemp(prefix="bill_ocr_degrade_", suffix=".png")
+        os.close(fd)
+        pix.save(out)
+        return out
+    except Exception:  # noqa: BLE001 - 降级失败由调用方保持原错误
+        return None
+
+
+def _degraded_retry(path: str, original_error: str) -> list[dict[str, Any]] | None:
+    """扫描件/图片 OCR 失败后降采样二次识别；失败返回 None，调用方保持原错误。"""
+    if not getattr(config, "ocr_degrade_enabled", True):
+        return None
+    budget = get_budget()
+    try:
+        budget.reserve_ocr()
+    except BudgetExceeded:
+        return None
+
+    degraded_path = _render_downscaled(path)
+    if degraded_path is None:
+        budget.release_ocr()
+        return None
+    try:
+        try:
+            file_url = stage_local_file(degraded_path)
+        except Exception:  # noqa: BLE001 - staging 失败没有发起 OCR，回滚额度
+            budget.release_ocr()
+            return None
+        try:
+            result = call_ocr(file_url)
+        except Exception:  # noqa: BLE001 - call_ocr 已消耗尝试，不回滚（与原语义一致）
+            return None
+    finally:
+        try:
+            os.unlink(degraded_path)
+        except OSError:
+            pass
+
+    if not _is_success(result):
+        return None
+    data = result.get("data") if isinstance(result, dict) else None
+    items = data.get("list") if isinstance(data, dict) else None
+    docs = _docs_from_items(items, str(path), file_url)
+    if not docs:
+        return None
+    for d in docs:
+        d.setdefault("meta", {})["ocr_degraded_retry"] = True
+        d["meta"]["ocr_degraded_reason"] = clean_error(original_error)[:300]
+    return docs
+
+
+def _recover(path: str, meta: dict[str, Any]) -> list[dict[str, Any]] | None:
+    """降级链：PDF 文本层 → 降采样二次 OCR。返回 None 表示无法恢复。"""
+    doc = _fallback_pdf_text(path, meta)
+    if doc is not None:
+        return [doc]
+    reason = meta.get("ocr_error") or meta.get("ocr_skipped") or "OCR 失败"
+    return _degraded_retry(path, reason)
 
 
 def _is_transient_ocr_error(e: Exception) -> bool:
@@ -355,17 +442,17 @@ def parse_ocr(path: str) -> list[dict]:
         budget.release_ocr()
         # meta 提示与 parse_errors 同标准脱敏：这条分支不再经过 _clean_error，
         # 临时路径与 URL 凭据必须在源头清掉
-        doc = _fallback_pdf_text(path, {"ocr_error": clean_error(str(e)), "ocr_fallback": "pdf_text"})
-        if doc is not None:
-            return [doc]
+        recovered = _recover(path, {"ocr_error": clean_error(str(e)), "ocr_fallback": "pdf_text"})
+        if recovered is not None:
+            return recovered
         raise
 
     try:
         result = call_ocr(file_url)
     except Exception as e:  # noqa: BLE001 - 网络/网关失败：PDF 可降级，图片转人工
-        doc = _fallback_pdf_text(path, {"ocr_error": clean_error(str(e)), "ocr_fallback": "pdf_text"})
-        if doc is not None:
-            return [doc]
+        recovered = _recover(path, {"ocr_error": clean_error(str(e)), "ocr_fallback": "pdf_text"})
+        if recovered is not None:
+            return recovered
         raise
 
     if not _is_success(result):
@@ -373,30 +460,21 @@ def parse_ocr(path: str) -> list[dict]:
         raw = result.get("message") or result if isinstance(result, dict) else str(result)
         # 网关 message 长度不可控：只扫描有界窗口，但窗口必须保住 marker（见 _SCAN_MAX）
         msg = f"OCR 返回失败: {_clean_excerpt(raw, 500)}"
-        doc = _fallback_pdf_text(path, {"ocr_error": msg, "ocr_fallback": "pdf_text"})
-        if doc is not None:
-            return [doc]
+        recovered = _recover(path, {"ocr_error": msg, "ocr_fallback": "pdf_text"})
+        if recovered is not None:
+            return recovered
         raise RuntimeError(msg)
 
     data = result.get("data") if isinstance(result, dict) else None
     items = data.get("list") if isinstance(data, dict) else None
     if not isinstance(items, list) or not items:
         hint = "OCR 成功但未返回 list 内容（网关未识别出单据）"
-        doc = _fallback_pdf_text(path, {"ocr_error": hint, "ocr_fallback": "pdf_text"})
-        if doc is not None:
-            return [doc]
+        recovered = _recover(path, {"ocr_error": hint, "ocr_fallback": "pdf_text"})
+        if recovered is not None:
+            return recovered
         raise RuntimeError(hint)
 
-    docs: list[dict] = []
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        doc = _item_to_doc(item, str(path), file_url)
-        if not _doc_has_content(doc):
-            # 空/占位条目（{}、仅 page_index、chargeList:[{}]、suspicious:False）：
-            # 产出空 doc 会让下游误报「文件无内容可提取」，真实原因是网关未识别出内容
-            continue
-        docs.append(doc)
+    docs = _docs_from_items(items, str(path), file_url)
     if not docs:
         # data.list 非空但无任何有效条目：PDF 有文本层则降级本地提取，
         # 不能因为网关返回垃圾条目就丢掉真实内容；无文本层才报错转人工
@@ -404,9 +482,9 @@ def parse_ocr(path: str) -> list[dict]:
             f"OCR 响应 data.list 无有效单据条目（{len(items)} 个条目均无可提取内容）: "
             f"{_clean_excerpt(items, 200)}"
         )
-        doc = _fallback_pdf_text(path, {"ocr_error": hint, "ocr_fallback": "pdf_text"})
-        if doc is not None:
-            return [doc]
+        recovered = _recover(path, {"ocr_error": hint, "ocr_fallback": "pdf_text"})
+        if recovered is not None:
+            return recovered
         raise RuntimeError(hint)
     skipped = len(items) - len(docs)
     if skipped:

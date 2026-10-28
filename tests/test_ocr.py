@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 import pytest
+import requests
 
 from bill_agent.harness.budget import BudgetExceeded, BudgetTracker
 from bill_agent.parsers import ocr
@@ -992,3 +993,69 @@ def test_ocr_cache_expires_after_ttl(monkeypatch, tmp_path):
     clock[0] = 2.0
     ocr.parse_ocr(str(img))
     assert len(calls) == 2, "超过 TTL 后必须重新调网关"
+
+
+def _png_file(tmp_path):
+    """用 pymupdf 生成一个真实 PNG 图片文件（没有文本层，模拟扫描件）。"""
+    import pymupdf
+
+    pdf = tmp_path / "_src.pdf"
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 72), "Fee USD 100")
+    doc.save(str(pdf))
+    doc.close()
+
+    img = tmp_path / "scan.png"
+    doc = pymupdf.open(str(pdf))
+    doc[0].get_pixmap(matrix=pymupdf.Matrix(2, 2)).save(str(img))
+    doc.close()
+    return img
+
+
+def _degrade_env(monkeypatch, budget, degrade_enabled=True):
+    from types import SimpleNamespace
+
+    calls = []
+
+    def fake_call(url, task=None):
+        calls.append(url)
+        if len(calls) == 1:
+            raise requests.exceptions.HTTPError(
+                "502 Bad Gateway", response=SimpleNamespace(status_code=502)
+            )
+        return {"success": True, "error_code": 0,
+                "data": {"list": [{"invoiceNumber": "X1"}]}}
+
+    monkeypatch.setattr(ocr, "config", SimpleNamespace(
+        ocr_cache_enabled=False, ocr_cache_ttl_seconds=3600,
+        ocr_degrade_enabled=degrade_enabled, ocr_degrade_scale=0.5,
+    ))
+    monkeypatch.setattr(ocr, "_ocr_cache", {})
+    monkeypatch.setattr(ocr, "get_budget", lambda: budget)
+    monkeypatch.setattr(ocr, "ocr_delivery_blocker", lambda: None)
+    monkeypatch.setattr(ocr, "stage_local_file", lambda p: "https://x.example.com/f.png")
+    monkeypatch.setattr(ocr, "call_ocr", fake_call)
+    return calls
+
+
+def test_ocr_degraded_retry_succeeds_after_first_failure(monkeypatch, tmp_path):
+    """扫描图片首次 OCR 失败后降采样二次识别，审计里标注 degraded retry。"""
+    budget = BudgetTracker(1000, 3)
+    calls = _degrade_env(monkeypatch, budget)
+
+    docs = ocr.parse_ocr(str(_png_file(tmp_path)))
+
+    assert len(calls) == 2, "首次失败后必须降采样二次识别"
+    assert docs[0]["meta"]["ocr_degraded_retry"] is True
+    assert budget.ocr_calls == 2, "两次 OCR 尝试各占一次预算"
+
+
+def test_ocr_degraded_retry_disabled_raises_original(monkeypatch, tmp_path):
+    """关闭降采样后，首次失败保持原异常上抛，不二次识别。"""
+    budget = BudgetTracker(1000, 3)
+    calls = _degrade_env(monkeypatch, budget, degrade_enabled=False)
+
+    with pytest.raises(requests.exceptions.HTTPError):
+        ocr.parse_ocr(str(_png_file(tmp_path)))
+    assert len(calls) == 1, "降采样关闭时不得二次识别"

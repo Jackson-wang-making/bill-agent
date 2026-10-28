@@ -7,6 +7,7 @@ config/charge_name_map.yaml 结构：
 """
 from __future__ import annotations
 
+import difflib
 import re
 from datetime import datetime
 from email.utils import parsedate_to_datetime
@@ -45,6 +46,36 @@ def normalize_charge_name(raw_name: str) -> tuple[str, str]:
         if alias_key and alias_key in key:
             return standard, raw_name
     return raw_name, raw_name
+
+
+def suggest_charge_name(raw_name: str) -> str | None:
+    """未命中映射时的建议标准名（确定性模糊匹配，离线可用）。
+
+    默认关闭；开启后对未命中的原始名与字典标准名/别名做序列相似度，
+    达到阈值则返回最接近的标准名，供运营确认后回填字典。
+    """
+    if not config.standardize_suggest_enabled:
+        return None
+    raw = _norm(raw_name)
+    if not raw:
+        return None
+    best_standard: str | None = None
+    best_ratio = 0.0
+    for entry in config.charge_name_map:
+        standard = entry.get("standard", "")
+        if not standard:
+            continue
+        for name in (standard, *entry.get("aliases", [])):
+            key = _norm(str(name))
+            if not key:
+                continue
+            ratio = difflib.SequenceMatcher(None, raw, key).ratio()
+            if ratio > best_ratio:
+                best_ratio = ratio
+                best_standard = standard
+    if best_standard is not None and best_ratio >= config.standardize_suggest_min_ratio:
+        return best_standard
+    return None
 
 
 def normalize_currency(code: str) -> str:

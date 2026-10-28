@@ -119,6 +119,15 @@ class Config:
     def ocr_cache_ttl_seconds(self) -> int:
         return int(self.settings.get("ocr", {}).get("cache_ttl_seconds", 3600))
 
+    @property
+    def ocr_degrade_enabled(self) -> bool:
+        """扫描件/图片 OCR 失败后是否降采样二次识别。"""
+        return self.settings.get("ocr", {}).get("degrade_enabled", True)
+
+    @property
+    def ocr_degrade_scale(self) -> float:
+        return float(self.settings.get("ocr", {}).get("degrade_scale", 0.5))
+
     # ---- 对象存储 stage ----
     @property
     def stage(self) -> dict[str, Any]:
@@ -145,6 +154,16 @@ class Config:
         return self.settings.get("accounting_entity", "") or os.getenv(
             "ACCOUNTING_ENTITY", ""
         )
+
+    # ---- 标准化 ----
+    @property
+    def standardize_suggest_enabled(self) -> bool:
+        """未命中费用名时是否给出建议标准名（离线确定性模糊匹配）。"""
+        return self.settings.get("standardize", {}).get("suggest_enabled", False)
+
+    @property
+    def standardize_suggest_min_ratio(self) -> float:
+        return float(self.settings.get("standardize", {}).get("suggest_min_ratio", 0.6))
 
     # ---- 持久化 ----
     @property

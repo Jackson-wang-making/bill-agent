@@ -110,7 +110,7 @@ MinIO 本地起法：`docker compose up -d`，凭据读 `.env` 的 `MINIO_ROOT_U
 ## 测试
 
 ```bash
-uv run pytest -q     # 191 passed
+uv run pytest -q     # 196 passed
 ```
 
 - `test_matching / test_normalize / test_validation / test_parsers / test_output / test_ar_ap / test_ocr`：确定性业务逻辑，含冲突判定、日期归一化、OCR 响应映射（真实 schema 空占位判定；fileType/布尔/Y-N 标记不算内容，垃圾条目回退 PDF 文本层）、S3/OSS staging 路由、EML 内联/单部件附件与扩展名补全、非法文件名（含 Windows 设备名）/未知 charset/签名与日历部件跳过、附件落盘失败隔离、EML/Word 临时目录清理（成功与异常路径）、解析提示限长与单行化（4k 日历部件不再挤掉正文；300 字截断后聚合总数仍可见）、OCR staging 失败回退与预算回滚、OCR 不可用时 PDF 降级与打开错误透传。
@@ -121,6 +121,7 @@ uv run pytest -q     # 191 passed
 - `tests/fixtures/ocr_response_real.json` 是 OCR API 的真实响应，钉住响应结构，防止解析层再退化。
 - `test_ocr` 钉住 OCR 网关瞬时错误（5xx/连接/超时）按 `retry.max_ocr_retries` 指数退避重试、4xx 客户端错误不重试；`test_ar_ap` 钉住 AR/AP 佐证走 `deepseek-reasoner` 强模型。
 - `test_ocr` 新增 OCR 结果缓存（完整内容哈希键、TTL 过期、命中不调网关不扣预算）；`test_graph` 新增可选 checkpointer（none/memory/sqlite）与每节点耗时/输出键/预算快照追踪。
+- `test_ocr` 新增扫描件/图片 OCR 失败后的降采样二次识别；`test_normalize` 新增费用名建议（未命中时确定性模糊匹配，默认关闭）。
 
 ## 说明
 
@@ -134,3 +135,5 @@ uv run pytest -q     # 191 passed
 - OCR 网关瞬时错误按 `retry.max_ocr_retries` 指数退避重试，4xx 客户端错误立即上抛；每个图节点记录进入/退出与耗时（correlation_id 结构化日志）。
 - OCR 结果按文件内容哈希缓存（`ocr.cache_enabled` / `ocr.cache_ttl_seconds`），同一文件重复处理不重复调网关、不扣 OCR 预算。
 - 可选 checkpointer（`persistence.checkpointer = none|memory|sqlite`，默认 `none`）；开启后每次运行以 correlation_id 作为 thread_id 写入 checkpoint，并记录每节点耗时、输出键与 token/OCR 预算快照。
+- OCR 失败降级链：PDF 文本层 → 扫描件/图片降采样二次识别（`ocr.degrade_enabled` / `ocr.degrade_scale`）→ 仍失败转人工。
+- 费用名未命中字典时，可开启 `standardize.suggest_enabled` 给出建议标准名（离线确定性模糊匹配，供回填字典）。
