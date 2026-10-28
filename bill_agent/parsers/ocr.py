@@ -188,7 +188,9 @@ def _supplement_pdf_text(path: str, docs: list[dict[str, Any]]) -> list[dict[str
     if not (supplement.get("raw_text") or "").strip() and not supplement.get("tables"):
         return docs
     supplement.setdefault("meta", {})["ocr_supplement"] = True
-    return [*docs, supplement]
+    # 放在 OCR 结果前面：audit original_text 只取前 500 字，文本层全文更能
+    # 反映真实单据内容（网关可能只返回部分页/占位结果）。
+    return [supplement, *docs]
 
 
 def _is_transient_ocr_error(e: Exception) -> bool:

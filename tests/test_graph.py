@@ -44,6 +44,34 @@ def test_second_confirm_passes_full_extraction_result(monkeypatch):
     assert out["second_confirm_status"] == "pass"
 
 
+def test_pending_review_preserves_extracted_charge():
+    """语义复核失败转人工时，已提取的费用必须保留供人工核对，不能清空。"""
+    from bill_agent.graph.nodes.pending_review import pending_review_node
+
+    out = pending_review_node({
+        "validation_status": "fail",
+        "extraction_confidence": {"overall": 0.7},
+        "extracted_charges": [{
+            "charge_item": "On Carriage Additional - US Em",
+            "original_charge_item": "On Carriage Additional - US Em",
+            "amount": 245.0, "currency": "USD", "payment_term": None,
+            "quantity": None, "unit_price": None,
+        }],
+        "document_info": {"document_type": "Arrival Notice"},
+        "transaction_party": {"issuer": "CMA CGM", "recipient": "NEPTUNE"},
+        "parsed_documents": [{
+            "type": "pdf_text", "source_file": "x.pdf",
+            "raw_text": "On Carriage USD 245.00", "tables": [], "meta": {},
+        }],
+        "accounting_entity": "NEPTUNE",
+    })
+
+    details = out["output_records"][0]["charge_details"]
+    assert details["charge_item"] == "On Carriage Additional - US Em"
+    assert details["amount"] == 245.0
+    assert details["currency"] == "USD"
+
+
 def test_graph_compiles():
     g = build_graph()
     assert g.compile() is not None

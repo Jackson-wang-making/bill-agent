@@ -1088,7 +1088,9 @@ def test_ocr_pdf_adds_text_layer_supplement(monkeypatch, tmp_path):
     })
 
     docs = ocr.parse_ocr(str(pdf))
-    assert docs[0]["type"] == "ocr"
     supplements = [d for d in docs if d.get("meta", {}).get("ocr_supplement")]
     assert supplements, "含文本层的 PDF 必须追加本地全文补充"
     assert any("USD" in d["raw_text"] for d in supplements)
+    assert docs[0].get("meta", {}).get("ocr_supplement") is True, (
+        "文本层补充应排在 OCR 结果前，审计片段才能看到真实全文"
+    )

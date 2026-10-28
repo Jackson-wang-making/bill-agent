@@ -31,10 +31,17 @@ def make_pending_record(
     source_file: str | None,
     reasoning: list[str],
     original_text: str | None,
+    charge: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """PENDING_REVIEW 记录的统一形状（output_node 部分失败时也复用）。"""
     doc_info = state.get("document_info", {})
     party = state.get("transaction_party", {})
+    details = dict(_BLANK_CHARGE)
+    if charge:
+        # 已提取的费用必须保留供人工核对；PENDING_REVIEW 不等于丢弃数据。
+        for key in _BLANK_CHARGE:
+            if key in charge:
+                details[key] = charge.get(key)
     return {
         "operation": "PENDING_REVIEW",
         "document_info": {
@@ -46,7 +53,7 @@ def make_pending_record(
             "issuer": party.get("issuer"),
             "recipient": party.get("recipient"),
         },
-        "charge_details": dict(_BLANK_CHARGE),
+        "charge_details": details,
         "financial_attributes": {
             # 未配置记账主体时按题目要求输出 null，而不是空串
             "accounting_entity": state.get("accounting_entity") or None,
@@ -76,16 +83,24 @@ def pending_review_node(state: dict[str, Any]) -> dict[str, Any]:
         return {"output_records": [record], "final_status": "pending_review"}
 
     src = docs[0].get("source_file") if docs else None
+    extracted = state.get("normalized_charges") or state.get("extracted_charges") or []
+    first_charge = extracted[0] if extracted else None
 
     if not issues and not parse_errors and not any(doc_has_content(d) for d in docs):
         # 无解析错误但也没有任何可提取内容：空文本不喂 LLM，转人工并写明真实原因。
         # 解析层的降级/跳过提示（如纯内联 CID 图片邮件）放在最前，避免只剩
         # 「正文与附件均为空」而看不出为什么
+        empty_reasoning = parse_hints(docs) + ["文件无内容可提取（正文与附件均为空），转人工复核"]
+        if first_charge:
+            empty_reasoning.append(
+                f"已提取 {len(extracted)} 条费用（第 1 条保留在 charge_details 供人工复核）"
+            )
         record = make_pending_record(
             state,
             source_file=src,
-            reasoning=parse_hints(docs) + ["文件无内容可提取（正文与附件均为空），转人工复核"],
+            reasoning=empty_reasoning,
             original_text=None,
+            charge=first_charge,
         )
         return {"output_records": [record], "final_status": "pending_review"}
 
@@ -114,11 +129,16 @@ def pending_review_node(state: dict[str, Any]) -> dict[str, Any]:
     if parse_errors:
         # 校验失败路径且部分文件解析失败：错误行放最前，其余保留
         reasoning = _parse_error_lines(parse_errors) + reasoning
+    if first_charge:
+        reasoning.append(
+            f"已提取 {len(extracted)} 条费用（第 1 条保留在 charge_details 供人工复核）"
+        )
 
     record = make_pending_record(
         state,
         source_file=src,
         reasoning=reasoning,
         original_text=doc_snippet(docs),
+        charge=first_charge,
     )
     return {"output_records": [record], "final_status": "pending_review"}
